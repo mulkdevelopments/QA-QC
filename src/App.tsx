@@ -163,9 +163,7 @@ export default function App() {
     setBusyShare(true)
     try {
       const { share } = await createShare([...selected])
-      const absolute = share.url.startsWith('http')
-        ? share.url
-        : `${window.location.origin}${share.path}`
+      const absolute = `${window.location.origin}${share.path}`
       setShareUrl(absolute)
       await navigator.clipboard.writeText(absolute)
       showToast('Share link created and copied')
