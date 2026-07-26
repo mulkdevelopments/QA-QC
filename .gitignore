@@ -35,3 +35,4 @@ dist-ssr
 *.sql
 *.dump
 !prisma/migrations/**/*.sql
+.env*
