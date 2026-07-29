@@ -58,7 +58,7 @@ export default function LoginPage() {
         {error && <p className="form-error">{error}</p>}
 
         <button type="submit" className="btn primary wide" disabled={loading}>
-          {loading ? 'Mulk Ecosystem...' : 'Sign in'}
+          {loading ? 'Alubond Connect...' : 'Sign in'}
         </button>
       </form>
     </div>

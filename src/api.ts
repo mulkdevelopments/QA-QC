@@ -1,4 +1,4 @@
-import type { DocumentInput, DocumentLink } from './types'
+import type { Category, DocumentInput, DocumentLink } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -34,6 +34,30 @@ export function me() {
 
 export function listDocuments() {
   return request<{ documents: DocumentLink[] }>('/api/documents')
+}
+
+export function listCategories() {
+  return request<{ categories: Category[] }>('/api/categories')
+}
+
+export function createCategory(name: string) {
+  return request<{ category: Category }>('/api/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function updateCategory(id: string, name: string) {
+  return request<{ category: Category }>(`/api/categories/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function deleteCategory(id: string) {
+  return request<{ ok: boolean; movedTo?: string }>(`/api/categories/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export function createDocument(input: DocumentInput) {

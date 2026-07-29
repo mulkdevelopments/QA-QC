@@ -20,6 +20,19 @@ async function main() {
     create: { email, passwordHash },
   })
 
+  const defaults = [
+    { name: 'Process', sortOrder: 0 },
+    { name: 'Product', sortOrder: 1 },
+    { name: 'Other', sortOrder: 2 },
+  ]
+  for (const cat of defaults) {
+    await prisma.category.upsert({
+      where: { name: cat.name },
+      update: { sortOrder: cat.sortOrder },
+      create: cat,
+    })
+  }
+
   const count = await prisma.document.count()
   if (count === 0) {
     await prisma.document.createMany({

@@ -11,20 +11,25 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings2,
   Trash2,
   X,
   ExternalLink,
 } from 'lucide-react'
-import type { DocCategory, DocType, DocumentInput, DocumentLink } from './types'
+import type { Category, DocType, DocumentInput, DocumentLink } from './types'
 import {
+  createCategory,
   createDocument,
   createShare,
+  deleteCategory,
   deleteDocument,
   formatClipboardText,
   formatEmailBody,
+  listCategories,
   listDocuments,
   logout,
   me,
+  updateCategory,
   updateDocument,
 } from './api'
 import BrandMark from './BrandMark'
@@ -33,15 +38,14 @@ import './App.css'
 
 type Toast = { message: string; tone: 'ok' | 'err' } | null
 
-const CATEGORIES: Array<DocCategory | 'All'> = ['All', 'Process', 'Product', 'Other']
-
 export default function App() {
   const navigate = useNavigate()
   const [ready, setReady] = useState(false)
   const [docs, setDocs] = useState<DocumentLink[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<DocCategory | 'All'>('All')
+  const [category, setCategory] = useState<string>('All')
   const [toast, setToast] = useState<Toast>(null)
   const [editing, setEditing] = useState<DocumentLink | null>(null)
   const [adding, setAdding] = useState(false)
@@ -49,6 +53,13 @@ export default function App() {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [busyShare, setBusyShare] = useState(false)
   const [loadingDocs, setLoadingDocs] = useState(true)
+  const [managingCategories, setManagingCategories] = useState(false)
+
+  const refreshCategories = useCallback(async () => {
+    const data = await listCategories()
+    setCategories(data.categories)
+    return data.categories
+  }, [])
 
   const refreshDocs = useCallback(async () => {
     setLoadingDocs(true)
@@ -72,7 +83,7 @@ export default function App() {
         await me()
         if (cancelled) return
         setReady(true)
-        await refreshDocs()
+        await Promise.all([refreshDocs(), refreshCategories()])
       } catch {
         if (!cancelled) navigate('/login', { replace: true })
       }
@@ -80,7 +91,14 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [navigate, refreshDocs])
+  }, [navigate, refreshDocs, refreshCategories])
+
+  useEffect(() => {
+    if (category === 'All') return
+    if (!categories.some((c) => c.name === category)) {
+      setCategory('All')
+    }
+  }, [categories, category])
 
   useEffect(() => {
     if (!toast) return
@@ -255,18 +273,37 @@ export default function App() {
         </div>
 
         <div className="filters" role="tablist" aria-label="Categories">
-          {CATEGORIES.map((c) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={category === 'All'}
+            className={category === 'All' ? 'chip active' : 'chip'}
+            onClick={() => setCategory('All')}
+          >
+            All
+          </button>
+          {categories.map((c) => (
             <button
-              key={c}
+              key={c.id}
               type="button"
               role="tab"
-              aria-selected={category === c}
-              className={category === c ? 'chip active' : 'chip'}
-              onClick={() => setCategory(c)}
+              aria-selected={category === c.name}
+              className={category === c.name ? 'chip active' : 'chip'}
+              onClick={() => setCategory(c.name)}
             >
-              {c}
+              {c.name}
             </button>
           ))}
+          <button
+            type="button"
+            className="chip chip-manage"
+            onClick={() => setManagingCategories(true)}
+            title="Manage categories"
+            aria-label="Manage categories"
+          >
+            <Settings2 size={15} />
+            Manage
+          </button>
         </div>
 
         <div className="toolbar-actions">
@@ -279,7 +316,7 @@ export default function App() {
 
       <div className="list-meta">
         <span>
-          {loadingDocs ? 'Mulk Ecosystem...' : `${filtered.length} document${filtered.length !== 1 ? 's' : ''}`}
+          {loadingDocs ? 'Alubond Connect...' : `${filtered.length} document${filtered.length !== 1 ? 's' : ''}`}
           {selected.size > 0 ? ` · ${selected.size} selected` : ''}
         </span>
         <div className="list-meta-actions">
@@ -379,7 +416,7 @@ export default function App() {
               onClick={() => void generateShareLink()}
             >
               <Link2 size={17} />
-              <span>{busyShare ? 'Mulk Ecosystem...' : 'Share link'}</span>
+              <span>{busyShare ? 'Alubond Connect...' : 'Share link'}</span>
             </button>
           </div>
         </div>
@@ -419,6 +456,7 @@ export default function App() {
       {(adding || editing) && (
         <DocForm
           initial={editing}
+          categories={categories}
           onClose={() => {
             setAdding(false)
             setEditing(null)
@@ -427,11 +465,23 @@ export default function App() {
         />
       )}
 
+      {managingCategories && (
+        <CategoriesManager
+          categories={categories}
+          onClose={() => setManagingCategories(false)}
+          onChanged={async () => {
+            await refreshCategories()
+            await refreshDocs()
+          }}
+          onToast={showToast}
+        />
+      )}
+
       {confirmDelete && (
         <div className="modal-backdrop" onClick={() => setConfirmDelete(null)}>
           <div className="modal confirm" onClick={(e) => e.stopPropagation()} role="dialog">
             <h2>Delete this document?</h2>
-            <p>This removes it from Mulk connect. The SharePoint file itself is not deleted.</p>
+            <p>This removes it from Alubond Connect. The SharePoint file itself is not deleted.</p>
             <div className="modal-actions">
               <button type="button" className="btn ghost" onClick={() => setConfirmDelete(null)}>
                 Cancel
@@ -453,26 +503,189 @@ export default function App() {
   )
 }
 
+function CategoriesManager({
+  categories,
+  onClose,
+  onChanged,
+  onToast,
+}: {
+  categories: Category[]
+  onClose: () => void
+  onChanged: () => Promise<void>
+  onToast: (message: string, tone?: 'ok' | 'err') => void
+}) {
+  const [name, setName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function addCategory(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setBusy(true)
+    try {
+      await createCategory(name.trim())
+      setName('')
+      await onChanged()
+      onToast('Category added')
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : 'Could not add category', 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveEdit(id: string) {
+    if (!editingName.trim()) return
+    setBusy(true)
+    try {
+      await updateCategory(id, editingName.trim())
+      setEditingId(null)
+      setEditingName('')
+      await onChanged()
+      onToast('Category updated')
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : 'Could not update category', 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(id: string, label: string) {
+    if (!confirm(`Delete category “${label}”? Documents in it will move to another category.`)) return
+    setBusy(true)
+    try {
+      const result = await deleteCategory(id)
+      if (editingId === id) {
+        setEditingId(null)
+        setEditingName('')
+      }
+      await onChanged()
+      onToast(result.movedTo ? `Category deleted. Docs moved to ${result.movedTo}` : 'Category deleted')
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : 'Could not delete category', 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Manage categories">
+        <div className="modal-head">
+          <h2>Categories</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <p className="modal-copy">Add, rename, or delete filter categories used for documents.</p>
+
+        <form className="category-add" onSubmit={(e) => void addCategory(e)}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New category name"
+            disabled={busy}
+          />
+          <button type="submit" className="btn primary" disabled={busy || !name.trim()}>
+            <Plus size={16} />
+            Add
+          </button>
+        </form>
+
+        <ul className="category-manage-list">
+          {categories.map((c) => (
+            <li key={c.id} className="category-manage-row">
+              {editingId === c.id ? (
+                <>
+                  <input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    disabled={busy}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="btn primary small"
+                    disabled={busy || !editingName.trim()}
+                    onClick={() => void saveEdit(c.id)}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingId(null)
+                      setEditingName('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="category-manage-name">{c.name}</span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Edit"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingId(c.id)
+                      setEditingName(c.name)
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn danger"
+                    title="Delete"
+                    disabled={busy || categories.length <= 1}
+                    onClick={() => void remove(c.id, c.name)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 function DocForm({
   initial,
+  categories,
   onClose,
   onSave,
 }: {
   initial: DocumentLink | null
+  categories: Category[]
   onClose: () => void
   onSave: (input: DocumentInput) => void
 }) {
+  const defaultCategory = initial?.category || categories[0]?.name || ''
   const [name, setName] = useState(initial?.name ?? '')
   const [label, setLabel] = useState(initial?.label ?? '')
   const [url, setUrl] = useState(initial?.url ?? '')
   const [type, setType] = useState<DocType>(initial?.type ?? 'file')
-  const [category, setCategory] = useState<DocCategory>(initial?.category ?? 'Other')
+  const [category, setCategory] = useState(defaultCategory)
   const [error, setError] = useState('')
 
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim() || !url.trim()) {
       setError('Name and URL are required.')
+      return
+    }
+    if (!category) {
+      setError('Choose a category.')
       return
     }
     try {
@@ -519,10 +732,12 @@ function DocForm({
         <div className="field-row">
           <label className="field">
             <span>Category</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value as DocCategory)}>
-              <option value="Process">Process</option>
-              <option value="Product">Product</option>
-              <option value="Other">Other</option>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </label>
           <label className="field">

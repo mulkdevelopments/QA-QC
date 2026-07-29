@@ -1,5 +1,10 @@
 export type DocType = 'file' | 'folder'
-export type DocCategory = 'Process' | 'Product' | 'Other'
+
+export interface Category {
+  id: string
+  name: string
+  sortOrder: number
+}
 
 export interface DocumentLink {
   id: string
@@ -7,7 +12,7 @@ export interface DocumentLink {
   label: string
   url: string
   type: DocType
-  category: DocCategory
+  category: string
 }
 
 export type DocumentInput = Omit<DocumentLink, 'id'> & { id?: string }

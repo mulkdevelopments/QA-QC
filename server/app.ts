@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { authRouter } from './routes/auth.js'
 import { documentsRouter } from './routes/documents.js'
+import { categoriesRouter } from './routes/categories.js'
 import { sharesRouter } from './routes/shares.js'
 import { requireAuth } from './middleware/auth.js'
 
@@ -31,6 +32,7 @@ export function createApp() {
 
   app.use('/api/auth', authRouter)
   app.use('/api/documents', requireAuth, documentsRouter)
+  app.use('/api/categories', requireAuth, categoriesRouter)
   app.use('/api/shares', sharesRouter)
 
   // On Vercel, static files are served by the CDN; only local/prod Node serves dist.

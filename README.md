@@ -1,4 +1,4 @@
-# Mulk connect
+# Alubond Connect
 
 Manage document links, generate shareable pages, and send links via Outlook.
 
